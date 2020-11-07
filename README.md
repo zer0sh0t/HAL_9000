@@ -4,4 +4,4 @@ examples -> Guide for using HAL_9000
 
 To install the library:
 
-  pip install HAL-9000
+    pip install HAL-9000
