@@ -1,6 +1,6 @@
 HAL_9000 is a Neural Network library that offers various tools for Deep Learning and Reinforcement Learning tasks.
 
-Workflow of this library is inspired by Tensorflow’s Keras.
+Workflow of this library is inspired by Tensorflow’s Keras and Pytorch.
 
 As of now, HAL_9000 has 7 different operations:
 
