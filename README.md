@@ -1,8 +1,8 @@
-HAL_9000 is a Neural Network library that offers various tools for Deep Learning and Reinforcement Learning tasks.
+HAL_9000 is not the best deep learning framework, but it is a deep learning framework.
 
-Workflow of this library is inspired by Tensorflow’s Keras and Pytorch.
+Workflow of this framework is inspired by Tensorflow’s Keras.
 
-As of now, HAL_9000 has 7 different operations:
+As of now, HAL_9000 offers 6 different NNs:
 
        1. Perceptron
        2. Multilayer Perceptron
@@ -10,7 +10,6 @@ As of now, HAL_9000 has 7 different operations:
        4. Convolutional Neural Network
        5. Vanilla Recurrent Neural Network
        6. Deep Q Neural Network
-       7. NeuroEvolution
 
 HAL_9000 -> Source code for the library
 

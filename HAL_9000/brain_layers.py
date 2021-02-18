@@ -4,7 +4,6 @@ import numpy as np
 import copy
 import gym
 from HAL_9000.activation_functions import Sigmoid, ReLU, LeakyReLU, TanH, ELU, Softmax
-import time
 
 
 class Layer(object):
@@ -232,6 +231,117 @@ class VanillaRNN(Layer):
         return self.input_shape
 
 
+class BatchNorm2d(Layer):
+    def __init__(self, momentum=0.99):
+        self.momentum = momentum
+        self.trainable = True
+        self.eps = 0.01
+        self.running_mean = None
+        self.running_var = None
+
+    def init_parameters(self, opt):
+        self.gamma = np.ones(self.input_shape)
+        self.beta = np.zeros(self.input_shape)
+
+        self.gamma_opt = copy.copy(opt)
+        self.beta_opt = copy.copy(opt)
+
+    def n_parameters(self):
+        return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
+
+    def forward_propagation(self, X, training=True):
+        if self.running_mean is None:
+            self.running_mean = np.mean(X, axis=0)
+            self.running_var = np.var(X, axis=0)
+
+        if training and self.trainable:
+            mean = np.mean(X, axis=0)
+            var = np.var(X, axis=0)
+            self.running_mean = self.momentum * \
+                self.running_mean + (1 - self.momentum) * mean
+            self.running_var = self.momentum * \
+                self.running_var + (1 - self.momentum) * var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        X_centered = X - mean
+        self.stddev_inv = 1 / np.sqrt(var + self.eps)
+
+        self.X_norm = X_centered * self.stddev_inv
+        output = self.gamma * self.X_norm + self.beta
+
+        return output
+
+    def backward_propagation(self, grad):
+        if self.trainable:
+            grad_gamma = np.sum(grad * self.X_norm, axis=0)
+            grad_beta = np.sum(grad, axis=0)
+
+            self.gamma = self.gamma_opt.update(self.gamma, grad_gamma)
+            self.beta = self.beta_opt.update(self.beta, grad_beta)
+
+        batch_size = grad.shape[0]
+        grad = (1 / batch_size) * self.stddev_inv * (batch_size * grad - np.sum(grad, axis=0) -
+                                                     self.X_norm * np.sum(grad * self.X_norm, axis=0))
+
+        return grad
+
+    def output_shape(self):
+        return self.input_shape
+
+
+class LayerNorm(Layer):
+    def __init__(self, momentum=0.99):
+        self.momentum = momentum
+        self.trainable = True
+        self.eps = 0.01
+
+    def init_parameters(self, opt):
+        self.gamma = np.ones(self.input_shape).reshape(-1)
+        self.beta = np.zeros(self.input_shape).reshape(-1)
+
+        self.gamma_opt = copy.copy(opt)
+        self.beta_opt = copy.copy(opt)
+
+    def n_parameters(self):
+        return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
+
+    def forward_propagation(self, X, training=True):
+        batch_size = X.shape[0]
+        X = X.reshape(-1, batch_size)
+        mean = np.mean(X, axis=0)
+        var = np.var(X, axis=0)
+        X_centered = X - mean
+
+        self.stddev_inv = 1 / np.sqrt(var + self.eps)
+        self.X_norm = X_centered * self.stddev_inv
+        self.X_norm = self.X_norm.reshape(batch_size, -1)
+        output = self.gamma * self.X_norm + self.beta
+        output = output.reshape((output.shape[0], ) + self.input_shape)
+
+        return output
+
+    def backward_propagation(self, grad):
+        grad = grad.reshape(grad.shape[0], -1)
+        if self.trainable:
+            grad_gamma = np.sum(grad * self.X_norm, axis=0)
+            grad_beta = np.sum(grad, axis=0)
+
+            self.gamma = self.gamma_opt.update(self.gamma, grad_gamma)
+            self.beta = self.beta_opt.update(self.beta, grad_beta)
+
+        batch_size = grad.shape[0]
+        grad = (1 / batch_size) * self.stddev_inv * (batch_size * grad.T - np.sum(grad.T, axis=0) -
+                                                     self.X_norm.T * np.sum(grad.T * self.X_norm.T, axis=0))
+        grad = grad.reshape((grad.shape[1], ) + self.input_shape)
+
+        return grad
+
+    def output_shape(self):
+        return self.input_shape
+
+
 class Dropout(Layer):
     def __init__(self, p=0.2):
         self.p = p
@@ -240,14 +350,14 @@ class Dropout(Layer):
         self.n_units = None
         self.trainable = True
 
-    def forward_pass(self, X, training=True):
+    def forward_propagation(self, X, training=True):
         m = (1 - self.p)
         if training:
             self.mask = np.random.uniform(size=X.shape) > self.p
             m = self.mask
         return X * m
 
-    def backward_pass(self, grad):
+    def backward_propagation(self, grad):
         return grad * self.mask
 
     def output_shape(self):
@@ -270,6 +380,95 @@ class Flatten(Layer):
 
     def output_shape(self):
         return (np.prod(self.input_shape), )
+
+
+class PoolLayer(Layer):
+    def __init__(self, pool_shape=(2, 2), stride=1, padding="same shape"):
+        self.pool_shape = pool_shape
+        self.stride = stride
+        self.padding = padding
+        self.trainable = True
+
+    def forward_propagation(self, X, training=True):
+        self.layer_input = X
+        batch_size, channels, height, width = X.shape
+        _, out_height, out_width = self.output_shape()
+
+        X = X.reshape(batch_size*channels, 1, height, width)
+        X_col = img_2_lat(X, self.pool_shape, self.stride, self.padding)
+
+        output = self._pool_forward(X_col)
+        output = output.reshape(out_height, out_width, batch_size, channels)
+        output = output.transpose(2, 3, 0, 1)
+
+        return output
+
+    def backward_propagation(self, grad):
+        batch_size, _, _, _ = grad.shape
+        channels, height, width = self.input_shape
+        grad = grad.transpose(2, 3, 0, 1).ravel()
+
+        grad_col = self._pool_backward(grad)
+        grad = lat_2_img(grad_col, (batch_size * channels, 1, height, width),
+                         self.pool_shape, self.stride, self.padding)
+        grad = grad.reshape((batch_size,) + self.input_shape)
+
+        return grad
+
+    def output_shape(self):
+        channels, height, width = self.input_shape
+        if self.padding == "same shape":
+            out_height = height
+            out_width = width
+        else:
+            out_height = (height - self.pool_shape[0]) / self.stride + 1
+            out_width = (width - self.pool_shape[1]) / self.stride + 1
+
+        return channels, int(out_height), int(out_width)
+
+
+class MaxPool2D(PoolLayer):
+    def _pool_forward(self, X_col):
+        arg_max = np.argmax(X_col, axis=0).flatten()
+        output = X_col[arg_max, range(arg_max.size)]
+        self.cache = arg_max
+        return output
+
+    def _pool_backward(self, accum_grad):
+        accum_grad_col = np.zeros((np.prod(self.pool_shape), accum_grad.size))
+        arg_max = self.cache
+        accum_grad_col[arg_max, range(accum_grad.size)] = accum_grad
+        return accum_grad_col
+
+
+class AveragePool2D(PoolLayer):
+    def _pool_forward(self, X_col):
+        output = np.mean(X_col, axis=0)
+        return output
+
+    def _pool_backward(self, accum_grad):
+        accum_grad_col = np.zeros((np.prod(self.pool_shape), accum_grad.size))
+        accum_grad_col[:, range(accum_grad.size)] = 1. / \
+            accum_grad_col.shape[0] * accum_grad
+        return accum_grad_col
+
+
+class Reshape(Layer):
+    def __init__(self, shape, input_shape=None):
+        self.prev_shape = None
+        self.trainable = True
+        self.shape = shape
+        self.input_shape = input_shape
+
+    def forward_pass(self, X, training=True):
+        self.prev_shape = X.shape
+        return X.reshape((X.shape[0], ) + self.shape)
+
+    def backward_pass(self, grad):
+        return grad.reshape(self.prev_shape)
+
+    def output_shape(self):
+        return self.shape
 
 
 class DQN:
