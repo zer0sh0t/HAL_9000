@@ -1,8 +1,8 @@
+import gym
+import copy
 import math
 import random
 import numpy as np
-import copy
-import gym
 from HAL_9000.activation_functions import Sigmoid, ReLU, LeakyReLU, TanH, ELU, Softmax
 
 
