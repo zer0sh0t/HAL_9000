@@ -44,8 +44,7 @@ for i in range(batch_size):
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
 
 brain = HAL_9000.Brain(loss=CrossEntropy, opt=Adam())
-brain.add(VanillaRNN(30, input_shape=(time_steps, vocab_size),
-                     activation='tanh', trunc=5))
+brain.add(VanillaRNN(30, input_shape=(time_steps, vocab_size)))
 brain.add(Activation('softmax'))
 
 loss, acc, _, _ = brain.fit(X_train, y_train, epochs=100, batch_size=10)
