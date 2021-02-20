@@ -151,7 +151,172 @@ class Conv2D(Layer):
         return self.n_filters, int(oh), int(ow)
 
 
+class SlowConv2D(Layer):
+    def __init__(self, n_filters, filter_shape, input_shape=None, pad=0, stride=1):
+        self.n_filters = n_filters
+        self.filter_shape = filter_shape
+        self.input_shape = input_shape
+        self.pad = pad
+        self.stride = stride
+        self.trainable = True
+
+    def init_parameters(self, opt):
+        fh, fw = self.filter_shape
+        c = self.input_shape[0]
+        i = 1 / math.sqrt(np.prod(self.filter_shape))
+        self.w = np.random.uniform(-i, i, size=(self.n_filters, c, fh, fw))
+        self.b = np.zeros((self.n_filters))
+        self.w_opt = copy.copy(opt)
+        self.b_opt = copy.copy(opt)
+
+    def n_parameters(self):
+        return np.prod(self.w.shape) + np.prod(self.b.shape)
+
+    def forward_propagation(self, X, training=True):
+        self.layer_input = X
+        N, C, H, W = X.shape
+        _, _, FH, FW = self.w.shape
+        X_pad = np.pad(X, [(0,), (0,), (self.pad,), (self.pad,)])
+        F, H_out, W_out = self.output_shape()
+        output = np.zeros((N, F, H_out, W_out))
+
+        for n in range(N):
+            for f in range(F):
+                for h_out in range(H_out):
+                    for w_out in range(W_out):
+                        height, width = h_out * self.stride, w_out * self.stride
+                        output[n, f, h_out, w_out] = np.sum(
+                            X_pad[n, :, height:height+FH, width:width+FW] * self.w[f, :]) + self.b[f]
+
+        return output
+
+    def backward_propagation(self, grad):
+        if self.trainable:
+            grad_w = np.zeros_like(self.w)
+            grad_b = np.sum(grad, axis=(0, 2, 3))
+            self.b = self.b_opt.update(self.b, grad_b)
+
+        X = self.layer_input
+        N, C, H, W = X.shape
+        _, _, FH, FW = self.w.shape
+        F, H_out, W_out = self.output_shape()
+        X_pad = np.pad(X, [(0,), (0,), (self.pad,), (self.pad,)])
+        output = np.zeros_like(X)
+        grad_xpad = np.zeros_like(X_pad)
+
+        for n in range(N):
+            for f in range(F):
+                for h_out in range(H_out):
+                    for w_out in range(W_out):
+                        height, width = h_out * self.stride, w_out * self.stride
+                        if self.trainable:
+                            grad_w[f, :] += X_pad[n, :, height:height+FH,
+                                                  width:width+FW] * grad[n, f, h_out, w_out]
+
+                        grad_xpad[n, :, height:height+FH, width:width +
+                                  FW] += grad[n, f, h_out, w_out] * self.w[f, :]
+
+        if self.trainable:
+            self.w_opt.update(grad_w, self.w)
+        output = grad_xpad[:, :, self.pad:self.pad+H, self.pad:self.pad+W]
+        return output
+
+    def output_shape(self):
+        c, h, w = self.input_shape
+        fh, fw = self.filter_shape
+        oh = (h + (2*self.pad) - fh) / self.stride + 1
+        ow = (w + (2*self.pad) - fw) / self.stride + 1
+
+        return self.n_filters, int(oh), int(ow)
+
+
 class VanillaRNN(Layer):
+    def __init__(self, n_units, input_shape=None):
+        self.input_shape = input_shape
+        self.n_units = n_units
+        self.trainable = True
+        self.Whh = None
+        self.Wxh = None
+        self.Why = None
+
+    def init_parameters(self, opt):
+        timesteps, input_dim = self.input_shape
+        i = 1 / math.sqrt(input_dim)
+        self.Wxh = np.random.uniform(-i, i, (self.n_units, input_dim))
+
+        i = 1 / math.sqrt(self.n_units)
+        self.Whh = np.random.uniform(-i, i, (self.n_units, self.n_units))
+        self.Why = np.random.uniform(-i, i, (input_dim, self.n_units))
+
+        self.Whh_opt = copy.copy(opt)
+        self.Wxh_opt = copy.copy(opt)
+        self.Why_opt = copy.copy(opt)
+
+    def n_parameters(self):
+        return np.prod(self.Whh.shape) + np.prod(self.Wxh.shape) + np.prod(self.Why.shape)
+
+    def forward_propagation(self, X, training=True):
+        self.layer_input = X
+        N, T, D = X.shape
+        self.total_h_prev = np.zeros((N, T, self.n_units))
+        self.h = np.zeros((N, T, self.n_units))
+        self.h_prev = np.zeros((N, self.n_units))
+
+        for t in range(T):
+            self.x = X[:, t, :]
+            self._step_forward()
+            self.h[:, t, :] = self.h_next
+            self.total_h_prev[:, t, :] = self.h_prev
+            self.h_prev = self.h_next
+
+        output = np.dot(self.h, self.Why.T)
+        return output
+
+    def backward_propagation(self, grad):
+        X = self.layer_input
+        N, T, D = X.shape
+        grad_ = np.zeros((N, T, D))
+        grad_Wxh = np.zeros((self.n_units, D))
+        grad_Whh = np.zeros((self.n_units, self.n_units))
+        grad_Why = np.zeros((D, self.n_units))
+        self.dh_prev = 0
+
+        for t in reversed(range(T)):
+            self.grad_next = grad[:, t, :]
+            self._step_backward(t)
+            grad_[:, t, :] = self.dx
+            grad_Wxh += self.dWxh
+            grad_Whh += self.dWhh
+            grad_Why += self.dWhy
+
+        for g in [grad_Whh, grad_Wxh, grad_Why, grad_]:
+            np.clip(g, -5, 5, out=g)
+
+        self.Whh = self.Whh_opt.update(self.Whh, grad_Whh)
+        self.Wxh = self.Wxh_opt.update(self.Wxh, grad_Wxh)
+        self.Why = self.Why_opt.update(self.Why, grad_Why)
+        return grad_
+
+    def _step_forward(self):
+        h_linear = np.dot(self.h_prev, self.Whh) + \
+            np.dot(self.x, self.Wxh.T)
+        self.h_next = np.tanh(h_linear)
+
+    def _step_backward(self, t):
+        self.dWhy = np.dot(self.grad_next.T, self.h[:, t, :])
+        dh = np.dot(self.grad_next, self.Why)
+        dh += self.dh_prev
+        dh = (1 - (self.h[:, t, :] ** 2)) * dh
+        self.dh_prev = np.dot(dh, self.Whh.T)
+        self.dWhh = np.dot(self.total_h_prev[:, t, :].T, dh)
+        self.dWxh = np.dot(dh.T, self.layer_input[:, t, :])
+        self.dx = np.dot(dh, self.Wxh)
+
+    def output_shape(self):
+        return self.input_shape
+
+
+class OldVanillaRNN(Layer):
     def __init__(self, n_units, input_shape=None, activation='tanh', trunc=5):
         self.input_shape = input_shape
         self.n_units = n_units
@@ -218,20 +383,19 @@ class VanillaRNN(Layer):
                 grad_h = grad_h.dot(self.Whh) * \
                     self.activ.gradient(self.h_ba[:, t_-1])
 
-        for g in [grad_Whh, grad_Wxh, grad_Why]:
+        for g in [grad_Whh, grad_Wxh, grad_Why, grad_]:
             np.clip(g, -5, 5, out=g)
 
         self.Whh = self.Whh_opt.update(self.Whh, grad_Whh)
         self.Wxh = self.Wxh_opt.update(self.Wxh, grad_Wxh)
         self.Why = self.Why_opt.update(self.Why, grad_Why)
-
         return grad_
 
     def output_shape(self):
         return self.input_shape
 
 
-class BatchNorm2d(Layer):
+class BatchNorm2D(Layer):
     def __init__(self, momentum=0.99):
         self.momentum = momentum
         self.trainable = True
@@ -453,6 +617,54 @@ class AveragePool2D(PoolLayer):
         return accum_grad_col
 
 
+class SlowMaxPool2D(Layer):
+    def __init__(self, pool_shape=(2, 2), stride=1):
+        self.pool_shape = pool_shape
+        self.stride = stride
+        self.trainable = True
+
+    def forward_propagation(self, X, training=True):
+        self.layer_input = X
+        N, C, H, W = X.shape
+        FH, FW = self.pool_shape
+        _, H_out, W_out = self.output_shape()
+        output = np.zeros((N, C, H_out, W_out))
+
+        for n in range(N):
+            for h_out in range(H_out):
+                for w_out in range(W_out):
+                    height, width = h_out * self.stride, w_out * self.stride
+                    output[n, :, h_out, w_out] = np.max(
+                        X[n, :, height:height+FH, width:width+FW], axis=(-2, -1))
+
+        return output
+
+    def backward_propagation(self, grad):
+        X = self.layer_input
+        N, C, H, W = X.shape
+        FH, FW = self.pool_shape
+        _, H_out, W_out = self.output_shape()
+        output = np.zeros_like(X)
+
+        for n in range(N):
+            for c in range(C):
+                for h_out in range(H_out):
+                    for w_out in range(W_out):
+                        height, width = h_out * self.stride, w_out * self.stride
+                        idx = np.unravel_index(
+                            np.argmax(X[n, c, height:height+FH, width:width+FW]), (FH, FW))
+                        output[n, c, height:height+FH, width:width +
+                               FW][idx] = grad[n, c, h_out, w_out]
+
+        return output
+
+    def output_shape(self):
+        channels, height, width = self.input_shape
+        out_height = (height - self.pool_shape[0]) / self.stride + 1
+        out_width = (width - self.pool_shape[1]) / self.stride + 1
+        return channels, int(out_height), int(out_width)
+
+
 class Reshape(Layer):
     def __init__(self, shape, input_shape=None):
         self.prev_shape = None
@@ -471,7 +683,7 @@ class Reshape(Layer):
         return self.shape
 
 
-class DQN:
+class DQN():
     def __init__(self, env_name='CartPole-v1', epsilon=1, min_epsilon=0.1, gamma=0.9, decay_rate=0.005):
         self.epsilon = epsilon
         self.min_epsilon = min_epsilon
@@ -571,7 +783,7 @@ class DQN:
         self.env.close()
 
 
-class NeuroEvolution:
+class NeuroEvolution():
     def __init__(self, brain_fn, population_size, mutation_rate):
         self.brain_fn = brain_fn
         self.pop_size = population_size
