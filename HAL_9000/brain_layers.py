@@ -217,7 +217,7 @@ class SlowConv2D(Layer):
                                   FW] += grad[n, f, h_out, w_out] * self.w[f, :]
 
         if self.trainable:
-            self.w_opt.update(grad_w, self.w)
+            self.w_opt.update(self.w, grad_w)
         output = grad_xpad[:, :, self.pad:self.pad+H, self.pad:self.pad+W]
         return output
 
