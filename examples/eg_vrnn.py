@@ -1,6 +1,6 @@
-import numpy as np
 import HAL_9000
-from HAL_9000.brain_layers import VanillaRNN, Activation
+import numpy as np
+from HAL_9000.brain_layers import VanillaRNN, Activation, LSTM
 from HAL_9000.optimizers import Adam
 from HAL_9000.loss_functions import CrossEntropy
 from HAL_9000.utils import train_test_split, accuracy_score
@@ -44,6 +44,7 @@ for i in range(batch_size):
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
 
 brain = HAL_9000.Brain(loss=CrossEntropy, opt=Adam())
+# to use lstm, replace VanillaRNN with LSTM
 brain.add(VanillaRNN(30, input_shape=(time_steps, vocab_size)))
 brain.add(Activation('softmax'))
 

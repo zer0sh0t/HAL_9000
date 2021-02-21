@@ -10,7 +10,7 @@ classifiers = [
 
 setup(
     name='HAL_9000',
-    version='3.0.0',
+    version='4.0.0',
     description='A Deep Learning framework',
     long_description=open('README.txt').read() + '\n\n' +
     open('CHANGELOG.txt').read(),

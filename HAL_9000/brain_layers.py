@@ -230,6 +230,143 @@ class SlowConv2D(Layer):
         return self.n_filters, int(oh), int(ow)
 
 
+class LSTM(Layer):
+    def __init__(self, n_units, input_shape=None):
+        self.input_shape = input_shape
+        self.n_units = n_units
+        self.trainable = True
+        self.W_out = None
+        self.Wx = None
+        self.Wh = None
+
+    def init_parameters(self, opt):
+        T, D = self.input_shape
+        i = 1 / math.sqrt(D)
+        self.Wout = np.random.uniform(-i, i, (self.n_units, D))
+
+        i = 1 / math.sqrt(4 * self.n_units)
+        self.Wx = np.random.uniform(-i, i, (D, 4 * self.n_units))
+        self.Wh = np.random.uniform(-i, i, (self.n_units, 4 * self.n_units))
+        self.b = np.zeros((4 * self.n_units,))
+
+        self.Wx_opt = copy.copy(opt)
+        self.Wh_opt = copy.copy(opt)
+        self.Wout_opt = copy.copy(opt)
+        self.b_opt = copy.copy(opt)
+
+    def n_parameters(self):
+        return np.prod(self.W_out.shape) + np.prod(self.Wx.shape) + np.prod(self.Wh.shape) + np.prod(self.b.shape)
+
+    def sigmoid(self, x):
+        return 1 / (1 + np.exp(-x))
+
+    def forward_propagation(self, X, training=True):
+        self.cache = []
+        self.layer_input = X
+        N, T, D = X.shape
+        self.h = np.zeros((N, T, self.n_units))
+        prev_h = np.zeros((N, self.n_units))
+        prev_c = np.zeros((N, self.n_units))
+        i = 0
+        f = 0
+        o = 0
+        g = 0
+        gate_i = 0
+        gate_f = 0
+        gate_o = 0
+        gate_g = 0
+        next_c = np.zeros((N, self.n_units))
+        next_h = np.zeros((N, self.n_units))
+
+        for t in range(T):
+            self.x = X[:, t, :]
+            if t == 0:
+                self.cache.append((self.x, prev_h, prev_c, i, f, o, g, gate_i, gate_f,
+                                   gate_o, gate_g, next_c, next_h))
+            if t == 1:
+                self.cache.pop(0)
+            self._step_forward()
+            next_h = self.cache[-1][-1]
+            self.h[:, t, :] = next_h
+
+        output = np.dot(self.h, self.Wout)
+        return output
+
+    def backward_propagation(self, grad):
+        X = self.layer_input
+        N, T, D = X.shape
+        grad_ = np.zeros_like(X)
+        grad_Wx = np.zeros_like(self.Wx)
+        grad_Wh = np.zeros_like(self.Wh)
+        grad_Wout = np.zeros_like(self.Wout)
+        grad_b = np.zeros_like(self.b)
+        self.dprev_c = np.zeros((N, self.n_units))
+        self.dprev_h = np.zeros((N, self.n_units))
+
+        for t in reversed(range(T)):
+            self.grad_next = grad[:, t, :]
+            self._step_backward(t)
+            grad_[:, t, :] = self.dx
+            grad_Wx += self.dWx
+            grad_Wh += self.dWh
+            grad_Wout += self.dWout
+            grad_b += self.b
+
+        for g in [grad_Wh, grad_Wx, grad_Wout, grad_b, grad_]:
+            np.clip(g, -5, 5, out=g)
+
+        self.Wh = self.Wh_opt.update(self.Wh, grad_Wh)
+        self.Wx = self.Wx_opt.update(self.Wx, grad_Wx)
+        self.Wout = self.Wout_opt.update(self.Wout, grad_Wout)
+        self.b = self.b_opt.update(self.b, grad_b)
+        return grad_
+
+    def _step_forward(self):
+        prev_c, prev_h = self.cache[-1][-2], self.cache[-1][-1]
+
+        x = self.x
+        a = np.dot(prev_h, self.Wh) + np.dot(x, self.Wx) + self.b
+        i, f, o, g = np.split(a, 4, axis=1)
+        gate_i, gate_f, gate_o, gate_g = self.sigmoid(
+            i), self.sigmoid(f), self.sigmoid(o), np.tanh(g)
+        next_c = gate_f * prev_c + gate_i * gate_g
+        next_h = gate_o * np.tanh(next_c)
+
+        self.cache.append((x, prev_h, prev_c, i, f, o, g, gate_i,
+                           gate_f, gate_o, gate_g, next_c, next_h))
+
+    def _step_backward(self, t):
+        (x, prev_h, prev_c, i, f, o, g, gate_i, gate_f,
+         gate_o, gate_g, next_c, next_h) = self.cache[t]
+
+        self.dWout = np.dot(next_h.T, self.grad_next)
+        dnext_h = np.dot(self.grad_next, self.Wout.T)
+        dnext_h += self.dprev_h
+        dgate_o = dnext_h * np.tanh(next_c)
+        dnext_c = dnext_h * gate_o * (1 - np.tanh(next_c)**2)
+        dnext_c += self.dprev_c
+
+        dgate_f = dnext_c * prev_c
+        dgate_i = dnext_c * gate_g
+        dgate_g = dnext_c * gate_i
+        self.dprev_c = dnext_c * gate_f
+
+        dg = dgate_g * (1 - np.tanh(g) ** 2)
+        do = dgate_o * self.sigmoid(o) * (1 - self.sigmoid(o))
+        df = dgate_f * self.sigmoid(f) * (1 - self.sigmoid(f))
+        di = dgate_i * self.sigmoid(i) * (1 - self.sigmoid(i))
+
+        dinputs = np.concatenate((di, df, do, dg), axis=1)
+        self.dx = np.dot(dinputs, self.Wx.T)
+        self.dprev_h = np.dot(dinputs, self.Wh.T)
+        self.dWx = np.dot(x.T, dinputs)
+        self.dWh = np.dot(prev_h.T, dinputs)
+        self.db = np.sum(dinputs, axis=0)
+
+    def output_shape(self):
+        return self.input_shape
+
+
 class VanillaRNN(Layer):
     def __init__(self, n_units, input_shape=None):
         self.input_shape = input_shape
@@ -247,13 +384,15 @@ class VanillaRNN(Layer):
         i = 1 / math.sqrt(self.n_units)
         self.Whh = np.random.uniform(-i, i, (self.n_units, self.n_units))
         self.Why = np.random.uniform(-i, i, (input_dim, self.n_units))
+        self.b = np.zeros((self.n_units,))
 
         self.Whh_opt = copy.copy(opt)
         self.Wxh_opt = copy.copy(opt)
         self.Why_opt = copy.copy(opt)
+        self.b_opt = copy.copy(opt)
 
     def n_parameters(self):
-        return np.prod(self.Whh.shape) + np.prod(self.Wxh.shape) + np.prod(self.Why.shape)
+        return np.prod(self.Whh.shape) + np.prod(self.Wxh.shape) + np.prod(self.Why.shape) + np.prod(self.b.shape)
 
     def forward_propagation(self, X, training=True):
         self.layer_input = X
@@ -279,6 +418,7 @@ class VanillaRNN(Layer):
         grad_Wxh = np.zeros((self.n_units, D))
         grad_Whh = np.zeros((self.n_units, self.n_units))
         grad_Why = np.zeros((D, self.n_units))
+        grad_b = np.zeros((self.n_units,))
         self.dh_prev = 0
 
         for t in reversed(range(T)):
@@ -288,18 +428,20 @@ class VanillaRNN(Layer):
             grad_Wxh += self.dWxh
             grad_Whh += self.dWhh
             grad_Why += self.dWhy
+            grad_b += self.db
 
-        for g in [grad_Whh, grad_Wxh, grad_Why, grad_]:
+        for g in [grad_Whh, grad_Wxh, grad_Why, grad_b, grad_]:
             np.clip(g, -5, 5, out=g)
 
         self.Whh = self.Whh_opt.update(self.Whh, grad_Whh)
         self.Wxh = self.Wxh_opt.update(self.Wxh, grad_Wxh)
         self.Why = self.Why_opt.update(self.Why, grad_Why)
+        self.b = self.b_opt.update(self.b, grad_b)
         return grad_
 
     def _step_forward(self):
         h_linear = np.dot(self.h_prev, self.Whh) + \
-            np.dot(self.x, self.Wxh.T)
+            np.dot(self.x, self.Wxh.T) + self.b
         self.h_next = np.tanh(h_linear)
 
     def _step_backward(self, t):
@@ -311,6 +453,7 @@ class VanillaRNN(Layer):
         self.dWhh = np.dot(self.total_h_prev[:, t, :].T, dh)
         self.dWxh = np.dot(dh.T, self.layer_input[:, t, :])
         self.dx = np.dot(dh, self.Wxh)
+        self.db = np.sum(dh, axis=0)
 
     def output_shape(self):
         return self.input_shape
