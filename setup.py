@@ -12,7 +12,7 @@ setup(
     name='HAL_9000',
     version='4.0.0',
     description='A Deep Learning framework',
-    long_description=open('README.txt').read() + '\n\n' +
+    long_description=open('README.md').read() + '\n\n' +
     open('CHANGELOG.txt').read(),
     url='',
     author='Harin Kumar',
