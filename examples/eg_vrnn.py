@@ -16,39 +16,31 @@ for i, char in enumerate(chars):
     char_to_idx[char] = i
     idx_to_char[i] = char
 
-
-batch_size = 150
-time_steps = 10
-
-X = np.zeros((batch_size, time_steps, vocab_size))
-y = np.zeros((batch_size, time_steps, vocab_size))
-z = np.zeros(vocab_size)
-for i in range(batch_size):
+N = 150
+T = 20
+X = np.zeros((N, T), dtype=np.uint8)
+y = np.zeros((N, T), dtype=np.uint8)
+for i in range(N):
     q = []
-    for char in data[i:i+time_steps+1]:
+    for char in data[i:i+T+1]:
         idx = char_to_idx[char]
         q.append(idx)
 
-    for j in range(time_steps):
-        z[q[j]] = 1
-        X[i][j] = z
-        z[q[j]] = 0
+    X[i] = q[:len(q)-1]
+    y[i] = q[1:len(q)]
+    data = data[i+T:]
 
-        z[q[j+1]] = 1
-        y[i][j] = z
-        z[q[j+1]] = 0
-
-    data = data[i+time_steps:]
-
-
+W = np.eye(vocab_size)
+X = W[X]
+y = W[y]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4)
 
 brain = HAL_9000.Brain(loss=CrossEntropy, opt=Adam())
 # to use lstm, replace VanillaRNN with LSTM
-brain.add(VanillaRNN(30, input_shape=(time_steps, vocab_size)))
+brain.add(VanillaRNN(50, input_shape=(T, vocab_size)))
 brain.add(Activation('softmax'))
 
-loss, acc, _, _ = brain.fit(X_train, y_train, epochs=100, batch_size=10)
+loss, acc, _, _ = brain.fit(X_train, y_train, epochs=500, batch_size=128)
 print(loss[-1], acc[-1])
 
 y_pred = np.argmax(brain.predict(X_test), axis=2)
@@ -56,13 +48,23 @@ y_test = np.argmax(y_test, axis=2)
 # print(y_pred.shape)
 # print(y_test.shape)
 acc = np.mean(accuracy_score(y_test, y_pred))
+print(acc)
 
-print(acc * 100)
+text = "you are"
+idx = []
+for t in text:
+    idx.append(char_to_idx[t])
 
-text = ""
-for yp in y_pred:
-    for idx in yp:
-        char = idx_to_char[idx]
-        text += char
+vec = W[idx]
+vec = np.array([vec])
+for _ in range(100):
+    out = brain.predict(vec)
+    idx.append(np.argmax(out[:, -1], axis=-1)[0])
+    vec = np.array([W[idx]])
 
-print(text)
+out_text = ""
+for i in idx:
+    char = idx_to_char[i]
+    out_text += char
+
+print(out_text)
