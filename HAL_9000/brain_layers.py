@@ -599,8 +599,7 @@ class BatchNorm2D(Layer):
 
 
 class LayerNorm(Layer):
-    def __init__(self, momentum=0.99):
-        self.momentum = momentum
+    def __init__(self):
         self.trainable = True
         self.eps = 0.01
 
@@ -690,7 +689,7 @@ class Flatten(Layer):
 
 
 class PoolLayer(Layer):
-    def __init__(self, pool_shape=(2, 2), stride=1, padding="same shape"):
+    def __init__(self, pool_shape=(2, 2), stride=1, padding="none"):
         self.pool_shape = pool_shape
         self.stride = stride
         self.padding = padding
@@ -748,7 +747,7 @@ class MaxPool2D(PoolLayer):
         return accum_grad_col
 
 
-class AveragePool2D(PoolLayer):
+class AvgPool2D(PoolLayer):
     def _pool_forward(self, X_col):
         output = np.mean(X_col, axis=0)
         return output

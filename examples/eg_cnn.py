@@ -7,7 +7,7 @@ import HAL_9000
 from HAL_9000.utils import train_test_split, to_categorical, normalize, accuracy_score, bar_widgets
 from HAL_9000.optimizers import SGD, Adam, RMSprop
 from HAL_9000.loss_functions import CrossEntropy
-from HAL_9000.brain_layers import Dense, Conv2D, Flatten, Activation
+from HAL_9000.brain_layers import Dense, Conv2D, Flatten, Activation, BatchNorm2D, LayerNorm, MaxPool2D, AvgPool2D
 
 
 data = datasets.load_digits()
@@ -32,10 +32,16 @@ brain = HAL_9000.Brain(loss=CrossEntropy, opt=Adam())
 brain.add(Conv2D(n_filters=3, filter_shape=(2, 2),
                  input_shape=(1, 8, 8), padding='same shape', stride=1))
 brain.add(Activation('relu'))
+# to use avgpool, replace MaxPool2D with AvgPool2D
+brain.add(MaxPool2D())
+# to use layernorm, replace BatchNorm2D with LayerNorm
+brain.add(BatchNorm2D())
 
 brain.add(Conv2D(n_filters=3, filter_shape=(
     2, 2), stride=1, padding='same shape'))
 brain.add(Activation('relu'))
+brain.add(MaxPool2D())
+brain.add(BatchNorm2D())
 
 brain.add(Flatten())
 
