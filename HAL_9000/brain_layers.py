@@ -555,7 +555,11 @@ class BatchNorm2D(Layer):
 
     def n_parameters(self):
         return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
-
+    
+    # FNN: (b, d) -> no change
+    # CNN: (b, c, h, w) -> no change
+    # can't use batchnorm for tensors with variable token size 't', need to fix it
+    # RNN: (b, t, d) -> no change | (b, t, d) -> (b*t, d)
     def forward_propagation(self, X, training=True):
         if self.running_mean is None:
             self.running_mean = np.mean(X, axis=0)
@@ -615,8 +619,8 @@ class LayerNorm(Layer):
 
     # FFN: (b, d) -> (d, b)
     # CNN: (b, c, h, w) -> (c*h*w, b) 
-    # can't use layernorm with rnns, need to fix it 
-    # RNN: (b, t, d) -> (t*d, b) | (b, t, d) -> (d, t*b)
+    # can't use layernorm for tensors with variable token size 't', need to fix it
+    # RNN: (b, t, d) -> (t*d, b) | (b, t, d) -> (d, b*t)
     def forward_propagation(self, X, training=True):
         batch_size = X.shape[0]
         X = X.reshape(-1, batch_size)
