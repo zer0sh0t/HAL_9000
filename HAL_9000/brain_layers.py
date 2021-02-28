@@ -613,6 +613,10 @@ class LayerNorm(Layer):
     def n_parameters(self):
         return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
 
+    # FFN: (b, d) -> (d, b)
+    # CNN: (b, c, h, w) -> (c*h*w, b) 
+    # can't use layernorm with rnns, need to fix it 
+    # RNN: (b, t, d) -> (t*d, b) | (b, t, d) -> (d, t*b)
     def forward_propagation(self, X, training=True):
         batch_size = X.shape[0]
         X = X.reshape(-1, batch_size)
