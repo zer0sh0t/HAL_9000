@@ -555,12 +555,14 @@ class BatchNorm2D(Layer):
 
     def n_parameters(self):
         return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
-    
-    # FNN: (b, d) -> no change
-    # CNN: (b, c, h, w) -> no change
-    # can't use batchnorm for tensors with variable token size 't', need to fix it
-    # RNN: (b, t, d) -> no change | (b, t, d) -> (b*t, d)
+
     def forward_propagation(self, X, training=True):
+        self.layer_input = X
+        if len(self.layer_input.shape) == 3:
+            b, t, d = X.shape
+            X = X.reshape(b*t, d)
+            self.gamma = np.ones(d)
+            self.beta = np.zeros(d)
         if self.running_mean is None:
             self.running_mean = np.mean(X, axis=0)
             self.running_var = np.var(X, axis=0)
@@ -578,13 +580,16 @@ class BatchNorm2D(Layer):
 
         X_centered = X - mean
         self.stddev_inv = 1 / np.sqrt(var + self.eps)
-
         self.X_norm = X_centered * self.stddev_inv
         output = self.gamma * self.X_norm + self.beta
+        output = output.reshape(self.layer_input.shape)
 
         return output
 
     def backward_propagation(self, grad):
+        if len(grad.shape) == 3:
+            b, t, d = grad.shape
+            grad = grad.reshape(b*t, d)
         if self.trainable:
             grad_gamma = np.sum(grad * self.X_norm, axis=0)
             grad_beta = np.sum(grad, axis=0)
@@ -595,6 +600,7 @@ class BatchNorm2D(Layer):
         batch_size = grad.shape[0]
         grad = (1 / batch_size) * self.stddev_inv * (batch_size * grad - np.sum(grad, axis=0) -
                                                      self.X_norm * np.sum(grad * self.X_norm, axis=0))
+        grad = grad.reshape(self.layer_input.shape)
 
         return grad
 
@@ -617,27 +623,37 @@ class LayerNorm(Layer):
     def n_parameters(self):
         return np.prod(self.gamma.shape) + np.prod(self.beta.shape)
 
-    # FFN: (b, d) -> (d, b)
-    # CNN: (b, c, h, w) -> (c*h*w, b) 
-    # can't use layernorm for tensors with variable token size 't', need to fix it
-    # RNN: (b, t, d) -> (t*d, b) | (b, t, d) -> (d, b*t)
     def forward_propagation(self, X, training=True):
-        batch_size = X.shape[0]
-        X = X.reshape(-1, batch_size)
+        self.layer_input = X
+        if len(self.layer_input.shape) == 3:
+            b, t, d = X.shape
+            X = X.reshape(d, b*t)
+            self.gamma = np.ones(d)
+            self.beta = np.zeros(d)
+        else:
+            b = X.shape[0]
+            X = X.reshape(-1, b)
         mean = np.mean(X, axis=0)
         var = np.var(X, axis=0)
         X_centered = X - mean
 
         self.stddev_inv = 1 / np.sqrt(var + self.eps)
         self.X_norm = X_centered * self.stddev_inv
-        self.X_norm = self.X_norm.reshape(batch_size, -1)
+        if len(self.layer_input.shape) == 3:
+            self.X_norm = self.X_norm.reshape(b*t, d)
+        else:
+            self.X_norm = self.X_norm.reshape(b, -1)
         output = self.gamma * self.X_norm + self.beta
-        output = output.reshape((output.shape[0], ) + self.input_shape)
+        output = output.reshape(self.layer_input.shape)
 
         return output
 
     def backward_propagation(self, grad):
-        grad = grad.reshape(grad.shape[0], -1)
+        if len(grad.shape) == 3:
+            b, t, d = grad.shape
+            grad = grad.reshape(b*t, d)
+        else:
+            grad = grad.reshape(grad.shape[0], -1)
         if self.trainable:
             grad_gamma = np.sum(grad * self.X_norm, axis=0)
             grad_beta = np.sum(grad, axis=0)
@@ -648,7 +664,7 @@ class LayerNorm(Layer):
         batch_size = grad.shape[0]
         grad = (1 / batch_size) * self.stddev_inv * (batch_size * grad.T - np.sum(grad.T, axis=0) -
                                                      self.X_norm.T * np.sum(grad.T * self.X_norm.T, axis=0))
-        grad = grad.reshape((grad.shape[1], ) + self.input_shape)
+        grad = grad.reshape(self.layer_input.shape)
 
         return grad
 
@@ -822,11 +838,12 @@ class Reshape(Layer):
         self.shape = shape
         self.input_shape = input_shape
 
-    def forward_pass(self, X, training=True):
+    def forward_propagation(self, X, training=True):
         self.prev_shape = X.shape
+        print((X.shape[0], ) + self.shape)
         return X.reshape((X.shape[0], ) + self.shape)
 
-    def backward_pass(self, grad):
+    def backward_propagation(self, grad):
         return grad.reshape(self.prev_shape)
 
     def output_shape(self):
