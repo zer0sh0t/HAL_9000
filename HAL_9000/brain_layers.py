@@ -856,10 +856,8 @@ class DQN():
         self.min_epsilon = min_epsilon
         self.gamma = gamma
         self.decay_rate = decay_rate
-
         self.memory = []
         self.memory_size = 200
-
         self.env = gym.make(env_name)
         self.n_states = self.env.observation_space.shape[0]
         self.n_actions = self.env.action_space.n
@@ -1054,12 +1052,10 @@ def get_pads(filter_shape, output_shape="same shape"):
         return (0, 0), (0, 0)
     elif output_shape == "same shape":
         fh, fw = filter_shape
-
         ph1 = int(math.floor((fh - 1)/2))
         ph2 = int(math.ceil((fh - 1)/2))
         pw1 = int(math.floor((fw - 1)/2))
         pw2 = int(math.ceil((fw - 1)/2))
-
         return (ph1, ph2), (pw1, pw2)
 
 
@@ -1069,19 +1065,14 @@ def img_2_lat_idx(images_shape, filter_shape, padding, stride=1):
     ph, pw = padding
     oh = int((h + np.sum(ph) - fh) / stride + 1)
     ow = int((w + np.sum(pw) - fw) / stride + 1)
-
     x = np.repeat(np.arange(c), fh * fw).reshape(-1, 1)
-
     y0 = np.repeat(np.arange(fh), fw)
     y0 = np.tile(y0, c)
     y1 = stride * np.repeat(np.arange(oh), ow)
-
     z0 = np.tile(np.arange(fw), fh * c)
     z1 = stride * np.tile(np.arange(ow), oh)
-
     y = y0.reshape(-1, 1) + y1.reshape(1, -1)
     z = z0.reshape(-1, 1) + z1.reshape(1, -1)
-
     return (x, y, z)
 
 
@@ -1089,11 +1080,9 @@ def img_2_lat(images, filter_shape, stride, output_shape='same shape'):
     fh, fw = filter_shape
     ph, pw = get_pads(filter_shape, output_shape)
     padded_img = np.pad(images, ((0, 0), (0, 0), ph, pw), mode='constant')
-
     x, y, z = img_2_lat_idx(images.shape, filter_shape, (ph, pw), stride)
     lat = padded_img[:, x, y, z]
     c = images.shape[1]
-
     lat = lat.transpose(1, 2, 0).reshape(fh * fw * c, -1)
     return lat
 
@@ -1101,15 +1090,11 @@ def img_2_lat(images, filter_shape, stride, output_shape='same shape'):
 def lat_2_img(lat, images_shape, filter_shape, stride, output_shape='same shape'):
     bs, c, h, w = images_shape
     ph, pw = get_pads(filter_shape, output_shape)
-
     hap = h + np.sum(ph)
     wap = w + np.sum(pw)
     blank_img = np.zeros((bs, c, hap, wap))
-
     x, y, z = img_2_lat_idx(images_shape, filter_shape, (ph, pw), stride)
-
     lat = lat.reshape(c * np.prod(filter_shape), -1, bs)
     lat = lat.transpose(2, 0, 1)
     np.add.at(blank_img, (slice(None), x, y, z), lat)
-
     return blank_img[:, :, ph[0]:h+ph[0], pw[0]:w+pw[0]]
