@@ -1,10 +1,14 @@
 HAL_9000 may not be the best deep learning framework, but it is a deep learning framework.
 
-To install the library:
+To install the latest version of the framework:
+
+    pip install git+https://github.com/zer0sh0t/HAL_9000
+
+To install the framework from pypi(might have some deprecated features):
 
     pip install HAL-9000
 
-Workflow of this framework is inspired by Tensorflow’s Keras.
+Workflow of this framework is inspired by Keras.
 
 As of now, HAL_9000 offers:
 
