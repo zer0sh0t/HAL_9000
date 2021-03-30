@@ -1,40 +1,35 @@
-HAL_9000 may not be the best deep learning framework, but it is a deep learning framework.
-
-To install the latest version of the framework:
+HAL_9000 may not be the best deep learning framework, but it is a deep learning framework.  
+to install the latest version of the framework:
 
     pip install git+https://github.com/zer0sh0t/HAL_9000
 
-To install the framework from pypi(might have some deprecated features):
+to install the framework from pypi(might have some deprecated features):
 
     pip install HAL-9000
 
-Workflow of this framework is inspired by Keras.
-
-As of now, HAL_9000 offers:
-
+workflow of this framework is inspired by Keras.  
+as of now, HAL_9000 offers:  
 7 different variants of NNs:
 
-    -> Perceptron
-    -> Multilayer Perceptron
-    -> Dense Net
-    -> Conv Net
-    -> Vanilla RNN
-    -> LSTM
-    -> DQN
+- perceptron
+- multilayer perceptron
+- dense net
+- conv net
+- vanilla rnn
+- lstm
+- dqn
 
-Several regularization methods:
+several regularization methods:
 
-    -> Batch Norm
-    -> Layer Norm
-    -> Dropout
+- batch norm
+- layer norm
+- dropout
 
-Optimizers:
+optimizers:
 
-    -> Adam
-    -> RMS prop
-    -> SGD
+- adam
+- rmsprop
+- sgd
     
-HAL_9000 -> Source code for the library
-
-examples -> Guide for using HAL_9000
-
+`HAL_9000` -> source code for the library  
+`examples` -> guide for using HAL_9000
