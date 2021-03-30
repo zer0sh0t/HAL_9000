@@ -9,27 +9,21 @@ to install the framework from pypi(might have some deprecated features):
 
 workflow of this framework is inspired by Keras.  
 as of now, HAL_9000 offers:  
-7 different variants of NNs:
-
+7 different variants of NNs:  
 - perceptron
 - multilayer perceptron
 - dense net
 - conv net
 - vanilla rnn
 - lstm
-- dqn
-
-several regularization methods:
-
+- dqn  
+several regularization methods:  
 - batch norm
 - layer norm
 - dropout
-
-optimizers:
-
+optimizers:  
 - adam
 - rmsprop
-- sgd
-    
+- sgd  
 `HAL_9000` -> source code for the library  
 `examples` -> guide for using HAL_9000
