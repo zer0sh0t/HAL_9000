@@ -1,4 +1,6 @@
-HAL_9000 may not be the best deep learning framework, but it is a deep learning framework.  
+HAL_9000 is not just another deep-learning framework—it’s your launchpad into intelligent, modular, and high-performance neural nets. Built from scratch in Python with inspiration from Keras, HAL_9000 gives you everything from LSTM and vanilla RNNs to ConvNets, DQNs, and complete regularization & optimizer support. Plug in, train fast, and build smarter.
+
+
 to install the latest version of the framework:
 
     pip install git+https://github.com/zer0sh0t/HAL_9000
