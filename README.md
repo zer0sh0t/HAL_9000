@@ -1,3 +1,7 @@
+# HAL_9000 Deep Learning Framework
+
+![HAL 9000 Deep Learning Framework](./assets/HAL_9000.png)
+
 HAL_9000 is not just another deep-learning framework, it’s your launchpad into intelligent, modular, and high-performance neural nets. Built from scratch in Python with inspiration from Keras, HAL_9000 gives you everything from LSTM and vanilla RNNs to ConvNets, DQNs, and complete regularization & optimizer support. Plug in, train fast, and build smarter.
 
 
