@@ -5,7 +5,7 @@ to install the latest version of the framework:
 
     pip install git+https://github.com/zer0sh0t/HAL_9000
 
-to install the framework from pypi(might have some deprecated features):
+to install the framework from pypi:
 
     pip install HAL-9000
 
